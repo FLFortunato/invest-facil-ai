@@ -1,7 +1,6 @@
 from typing import Annotated, Sequence, TypedDict
 from dotenv import load_dotenv
 from langchain_core.messages import BaseMessage, AIMessage
-from langchain_openai import ChatOpenAI
 from langgraph.graph.message import add_messages, StateGraph
 from src.prompts.main_agent_prompt import MAIN_AGENT_PROMPT, SUMMARIZER_PROMPT
 from src.agents.stock_agent import stock_agent_run
@@ -11,12 +10,14 @@ from langgraph.graph import START, END
 from langchain.output_parsers import PydanticOutputParser
 from pydantic import BaseModel, Field
 from typing import Optional
-import asyncio
 from langgraph.checkpoint.memory import InMemorySaver
+from langchain_google_genai import ChatGoogleGenerativeAI
 
 load_dotenv()
 
 
+# Estrutura a ser retornada pelo agente supervisor
+# Cada ferramenta terá seu próprio input baseado no questionário do usuário
 class SupervisorResponse(BaseModel):
     agents_to_call: list = Field(
         description="""
@@ -36,55 +37,58 @@ class SupervisorResponse(BaseModel):
     )
 
 
-class State(TypedDict):
+# Estado do grafo
+# A propriedade supervisor_response só será retornada caso não haja sub agents para ser chamado
+class MainAgentState(TypedDict):
     messages: Annotated[Sequence[BaseMessage], add_messages]
+    supervisor_response: Optional[SupervisorResponse]
+    agents_results: Annotated[Sequence[BaseMessage], add_messages]
 
 
-model = ChatOpenAI(model="gpt-4.1")
+model = ChatGoogleGenerativeAI(model="gemini-2.5-flash")
 
 
-async def run_sub_agents(response: SupervisorResponse):
+async def stock_agent(state: MainAgentState):
 
-    if response and response.agents_to_call and len(response.agents_to_call) <= 0:
-        return
-
-    agent_mapping = {
-        "stock_agent": stock_agent_run,
-        "currency_agent": currency_agent_run,
-    }
-
-    agents_to_call = response.agents_to_call
-
-    tasks = []
-
-    for sub_agent in agents_to_call:
-        agent = agent_mapping[sub_agent]
-        agent_input = getattr(response, f"{sub_agent}_input")
-        executable = asyncio.create_task(agent(agent_input))  # type: ignore
-        tasks.append(executable)
-
-    if len(tasks) > 0:
-        results = await asyncio.gather(*tasks)
-
-        return results
+    resp = state["supervisor_response"]
+    if resp and resp.stock_agent_input:
+        result = await stock_agent_run(resp.stock_agent_input)
+        return {"agents_results": [result]}
+    return {"agents_results": []}
 
 
-async def aggregator(msgs) -> str | None:
+async def currency_agent(state: MainAgentState):
 
-    if msgs and len(msgs) > 0:
-        # Ensure msgs is a string for the prompt
-        if isinstance(msgs, list):
-            # Convert list elements to string and join them
-            msgs_str = "\n".join(str(m) for m in msgs)
-        else:
-            msgs_str = str(msgs)
-
-        response = await model.ainvoke(SUMMARIZER_PROMPT.format(msgs=msgs_str))
-
-        return str(response.content)
+    resp = state["supervisor_response"]
+    if resp and resp.currency_agent_input:
+        result = await currency_agent_run(resp.currency_agent_input)
+        return {"agents_results": [result]}
+    return {"agents_results": []}
 
 
-async def supervisor(state: State) -> State:
+
+  
+
+
+async def aggregator(state: MainAgentState):
+
+    resp = state["supervisor_response"]
+
+    # Caso não haja agentes, retorna resposta do supervisor direto
+    if not resp or not resp.agents_to_call:
+        response_content = ""
+        if resp is not None and getattr(resp, "response", None) is not None:
+            response_content = resp.response
+        return {"messages": [AIMessage(content=response_content or "")]}
+
+    results = state.get("agents_results") or []
+    msgs_str = "\n".join(str(m) for m in results)
+
+    response = await model.ainvoke(SUMMARIZER_PROMPT.format(msgs=msgs_str))
+    return {"messages": [AIMessage(content=response.content)]}
+
+
+async def supervisor(state: MainAgentState):
     parser = PydanticOutputParser(pydantic_object=SupervisorResponse)
 
     prompt = ChatPromptTemplate.from_template(MAIN_AGENT_PROMPT)
@@ -106,26 +110,31 @@ async def supervisor(state: State) -> State:
         }
     )
 
-    agents_response = await run_sub_agents(response)
-
-    results = await aggregator(agents_response)
-
-    final_result = ""
-
-    if not agents_response:
-        final_result = response.response or ""
-    else:
-        final_result = results
-
-    return {
-        "messages": [AIMessage(content=final_result or "")],
-    }
+    return {"supervisor_response": response}
 
 
-workflow = StateGraph(State)
+workflow = StateGraph(MainAgentState)
 checkpointer = InMemorySaver()
 workflow.add_node("supervisor", supervisor)
+workflow.add_node("stock_agent", stock_agent)
+workflow.add_node("currency_agent", currency_agent)
+workflow.add_node("aggregator", aggregator)
+
+
 workflow.add_edge(START, "supervisor")
-workflow.add_edge("supervisor", END)
+
+workflow.add_conditional_edges(
+    "supervisor",
+    lambda state: state["supervisor_response"].agents_to_call or ["aggregator"],
+    {
+        "stock_agent": "stock_agent",
+        "currency_agent": "currency_agent",
+        "aggregator": "aggregator",
+    },
+)
+
+workflow.add_edge("stock_agent", "aggregator")
+workflow.add_edge("currency_agent", "aggregator")
+workflow.add_edge("aggregator", END)
 
 supervisor_graph = workflow.compile(checkpointer=checkpointer)
