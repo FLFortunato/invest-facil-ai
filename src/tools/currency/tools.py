@@ -5,22 +5,28 @@ from src.markdowns.currency.main import generate_currency_list_markdown
 from src.utils import fetch_stock_api
 
 
-@tool("currency_tool", return_direct=True)
+@tool
 async def get_currencies_list():
     """
-    Retrieves a real-time list of supported currencies from the stock API
-    and returns it in a Markdown-friendly format.
+    Fetches real-time, up-to-date information about available currencies from the stock API
+    and formats it in a Markdown-friendly table for easy readability.
 
-    The data typically includes currency codes, names, and other metadata,
-    which is then passed to a Markdown generator for clean presentation.
+    This tool provides:
+    - Currency codes (e.g., USD, EUR, BRL)
+    - Currency names
+    - Optional metadata such as country or symbol
+
+    The returned Markdown can be directly used by the agent to answer user questions
+    about currency values or to list all supported currencies.
 
     Returns:
-        str: A Markdown-formatted table containing the list of available currencies.
+        str: A Markdown-formatted table containing current currency data.
 
     Raises:
-        RuntimeError: If fetching or formatting the currency list fails for any reason.
-                      The original exception message is included for debugging purposes.
+        RuntimeError: If fetching or formatting the currency list fails. The original
+                      exception message will be included for debugging purposes.
     """
+
     print("[get_currencies_list] Being called...")
     results = await fetch_stock_api("currencies/currencies-list")
     formatted = generate_currency_list_markdown(results)

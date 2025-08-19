@@ -24,7 +24,6 @@ stock_agent = create_react_agent(
 )
 
 
-@tool
 async def stock_agent_run(user_question: str):
     """
     Runs the Stock Agent with the provided user question and returns its output.
@@ -47,4 +46,4 @@ async def stock_agent_run(user_question: str):
         {"messages": [HumanMessage(content=user_question)]}
     )
 
-    return ResponseType(answer=response["messages"][-1].content)
+    return response["messages"][-1].content

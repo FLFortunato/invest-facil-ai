@@ -10,21 +10,23 @@ async def stream_graph_updates(user_input: str):
     """
     # O astream retorna eventos parciais do LLM
     async for event in supervisor_graph.astream(
-        {"messages": [HumanMessage(content=user_input)]}
+        {"messages": [HumanMessage(content=user_input)]},
+        {"configurable": {"thread_id": "1"}},
     ):
-        for node_name, value in event.items():
+        for _, value in event.items():
             messages = value.get("messages", [])
+
             if not messages:
                 continue
 
             last_msg = messages[-1]
 
             if isinstance(last_msg, HumanMessage):
-                print(f"[{node_name}] User: {last_msg.content}")
+                print(f"User: {last_msg.content}")
             elif isinstance(last_msg, AIMessage):
                 # streaming de tokens
                 content = last_msg.content or ""
-                print(f"[{node_name}] Assistant: {content}", end="\r")  # parcial
+                print(f"Assistant: {content}", end="\r")  # parcial
             # else:
             #     # qualquer outra mensagem
             #     print(f"[{node_name}] {last_msg}", end="\r")

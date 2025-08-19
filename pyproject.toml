@@ -16,4 +16,5 @@ dependencies = [
     "langgraph-supervisor>=0.0.29",
     "pillow>=11.3.0",
     "python-dotenv>=1.1.1",
+    "streamlit>=1.48.1",
 ]

@@ -29,7 +29,7 @@ async def get_company_main_data(ticker: str) -> Any:
             print(e)
 
 
-@tool("search_stock_updated_data", return_direct=True)
+@tool
 async def search_stock_updated_data(ticker: str):
     """
     Fetches up-to-date financial and profile data for a given company ticker
