@@ -1,11 +1,8 @@
 from dotenv import load_dotenv
 from pydantic import BaseModel
 from langgraph.prebuilt import create_react_agent
+from src.prompts.general_subject_agent_prompt import GENERAL_SUBJECT_PROMPT
 from src.prompts.stock_agent_prompt import STOCK_AGENT_PROMPT
-from src.tools.stock.stock_tools import (
-    search_stock_updated_data,
-    search_stock_aggregated_data,
-)
 from langchain_core.tools import tool
 from langchain_core.messages import HumanMessage
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -20,17 +17,17 @@ chat_model = ChatGoogleGenerativeAI(
 )
 
 
-stock_agent = create_react_agent(
+general_subject_agent = create_react_agent(
     model=chat_model,
-    tools=[search_stock_updated_data, search_stock_aggregated_data, search_internet],
-    prompt=STOCK_AGENT_PROMPT,
-    name="stock_agent",
+    tools=[search_internet],
+    prompt=GENERAL_SUBJECT_PROMPT,
+    name="general_subject_agent",
 )
 
 
-async def stock_agent_run(user_question: str):
-    print("===================STOCK AGENT====================", user_question)
-    response = await stock_agent.ainvoke(
+async def general_subject_agent_run(user_question: str):
+    print("===================GENERAL SUBJECT AGENT====================", user_question)
+    response = await general_subject_agent.ainvoke(
         {"messages": [HumanMessage(content=user_question)]}
     )
 

@@ -2,6 +2,7 @@ from typing import Annotated, Sequence, TypedDict
 from dotenv import load_dotenv
 from langchain_core.messages import BaseMessage, AIMessage
 from langgraph.graph.message import add_messages, StateGraph
+from src.agents.general_subject_agent import general_subject_agent_run
 from src.prompts.main_agent_prompt import MAIN_AGENT_PROMPT, SUMMARIZER_PROMPT
 from src.agents.stock_agent import stock_agent_run
 from src.agents.currency_agent import currency_agent_run
@@ -21,9 +22,32 @@ load_dotenv()
 class SupervisorResponse(BaseModel):
     agents_to_call: list = Field(
         description="""
-        List containing the name of the agents to be invoked. These agents are the followings:
-        stock_agent: This agent deals with everything related to stock market like data about a company and stock price.
-        currency_agent: This agent deals with everything related to currencies like updated prices a history.
+        List containing the names of the agents to be invoked. 
+        Choose one or more agents depending on the user request.
+
+        Available agents:
+
+        - stock_agent:
+            Handles everything related to the stock market.
+            Examples: company financial data, stock indicators, current stock prices.
+            Example queries: 
+                "Qual a cotação do Banco do Brasil hoje?"
+                "Me traga os indicadores do Itaú."
+
+        - currency_agent:
+            Handles everything related to currencies.
+            Examples: updated exchange rates, historical currency data.
+            Example queries:
+                "Quanto está o dólar hoje?"
+                "Mostre o histórico do euro nos últimos 6 meses."
+
+        - general_subject_agent:
+            Handles general and up-to-date topics about investments 
+            or the economy that are not specific to a single stock or currency. 
+            This agent is able to search the internet for updated information.
+            Example queries:
+                "Qual a melhor empresa para investir em 2025?"
+                "Quais são as notícias mais recentes sobre o mercado financeiro?"
         """
     )
     stock_agent_input: Optional[str] = Field(
@@ -32,6 +56,11 @@ class SupervisorResponse(BaseModel):
     currency_agent_input: Optional[str] = Field(
         description="The extracted part of the user input that is related to currency_agent"
     )
+
+    general_subject_agent_input: Optional[str] = Field(
+        description="The extracted part of the user input that is related to general_subject_agent"
+    )
+
     response: Optional[str] = Field(
         description="If no agent is to be called, return a friendly response in reply to the user input."
     )
@@ -66,8 +95,12 @@ async def currency_agent(state: MainAgentState):
     return {"agents_results": []}
 
 
-
-  
+async def general_subject_agent(state: MainAgentState):
+    resp = state["supervisor_response"]
+    if resp and resp.general_subject_agent_input:
+        result = await general_subject_agent_run(resp.general_subject_agent_input)
+        return {"agents_results": [result]}
+    return {"agents_results": []}
 
 
 async def aggregator(state: MainAgentState):
@@ -119,6 +152,7 @@ workflow.add_node("supervisor", supervisor)
 workflow.add_node("stock_agent", stock_agent)
 workflow.add_node("currency_agent", currency_agent)
 workflow.add_node("aggregator", aggregator)
+workflow.add_node("general_subject_agent", general_subject_agent)
 
 
 workflow.add_edge(START, "supervisor")
@@ -129,10 +163,12 @@ workflow.add_conditional_edges(
     {
         "stock_agent": "stock_agent",
         "currency_agent": "currency_agent",
+        "general_subject_agent": "general_subject_agent",
         "aggregator": "aggregator",
     },
 )
 
+workflow.add_edge("general_subject_agent", "aggregator")
 workflow.add_edge("stock_agent", "aggregator")
 workflow.add_edge("currency_agent", "aggregator")
 workflow.add_edge("aggregator", END)

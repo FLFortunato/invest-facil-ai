@@ -100,3 +100,25 @@ async def search_stock_aggregated_data(ticker: str, property: str):
         f"[search_stock_aggregated_data] Generated markdown length: {len(formatted)} characters"
     )
     return {"results": formatted}
+
+
+@tool
+async def general_subject_search(msg: str) -> str:
+    """
+    Use this tool when the user asks a broad or analytical question related to stocks
+    or the stock market, rather than requesting specific price data.
+
+    Examples of valid queries:
+    - "What is the best company to invest in Brazil in 2025?"
+    - "Which Brazilian stocks have the best growth potential this year?"
+    - "Is it better to invest in banks or energy companies right now?"
+    - "What are the risks of investing in Petrobras?"
+
+    Input:
+        msg (str): A natural language question related to stock market analysis,
+        investment strategies, or company comparisons.
+
+    Output:
+        str: A structured, reasoned answer with insights and context about the
+        stock market, companies, or sectors mentioned.
+    """
